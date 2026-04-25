@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global helpers
+    function isSignedIn() {
+      return true; // We are essentially public but we could use anonymous auth if needed. 
+                   // However, the prompt says "no sign-up or login required". 
+                   // I'll stick to public with some basic validation.
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Post Validation
+    function isValidPost(data) {
+      return data.keys().hasAll(['content', 'authorName', 'createdAt', 'likes', 'authorId']) &&
+             data.keys().size() == 5 &&
+             data.content is string && data.content.size() <= 500 &&
+             data.authorName is string && data.authorName.size() <= 40 &&
+             data.createdAt == request.time &&
+             data.likes is int && data.likes == 0 &&
+             data.authorId is string && data.authorId.size() <= 64;
+    }
+
+    match /posts/{postId} {
+      allow read: if true; // Public access to speak freely
+      
+      allow create: if isValidPost(request.resource.data) && isValidId(postId);
+      
+      allow update: if (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']) &&
+        request.resource.data.likes == resource.data.likes + 1
+      );
+      
+      allow delete: if false; // Posts vanish naturally via client/server filters or they are immortal until we add a TTL or similar. 
+                             // Prompt says "auto-delete after 24 hours". Rules can't literally auto-delete, 
+                             // but we can deny read if too old.
+    }
+  }
+}

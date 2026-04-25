@@ -1,0 +1,13 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /posts/{userId}/{imageId} {
+      // Allow uploads if the user is authenticated and the path matches their UID
+      allow write: if request.auth != null && request.auth.uid == userId;
+      // Allow public read access to post images
+      allow read: if true;
+      // Allow deletion only by the owner
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

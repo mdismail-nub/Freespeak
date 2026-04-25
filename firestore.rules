@@ -1,0 +1,117 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 0.1 Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
+    }
+
+    function isAuthor(data) {
+      return isSignedIn() && data.authorId == request.auth.uid;
+    }
+
+    // 1. Post Schema Validation
+    function isValidPost(data) {
+      return data.keys().hasAll(['content', 'authorName', 'createdAt', 'likes', 'authorId']) &&
+             (data.keys().size() == 5 || (data.keys().size() == 6 && data.keys().hasAll(['imageUrl']))) &&
+             data.content is string && data.content.size() >= 0 && data.content.size() <= 1000 &&
+             data.authorName is string && data.authorName.size() <= 50 &&
+             data.authorId is string && data.authorId.size() <= 128 &&
+             (!data.keys().hasAll(['imageUrl']) || (data.imageUrl is string && data.imageUrl.size() <= 1000));
+    }
+
+    function isValidReply(data) {
+      return data.keys().hasAll(['content', 'authorName', 'createdAt', 'authorId', 'likes']) &&
+             data.keys().size() == 5 &&
+             data.content is string && data.content.size() >= 0 && data.content.size() <= 400 &&
+             data.authorName is string && data.authorName.size() <= 50 &&
+             data.authorId is string && data.authorId.size() <= 128;
+    }
+
+    function isWithinWindow(data) {
+      return data.createdAt > request.time - duration.value(24, 'h');
+    }
+
+    // 2. Posts Collection
+    match /posts/{postId} {
+      allow list: if true;
+      allow get: if isWithinWindow(existing()); 
+
+      allow create: if isSignedIn() &&
+                    isValidPost(incoming()) && 
+                    incoming().authorId == request.auth.uid &&
+                    incoming().createdAt == request.time &&
+                    incoming().likes == 0 &&
+                    isValidId(postId);
+
+      allow update: if isSignedIn() && isWithinWindow(existing()) && (
+        // Action: Like
+        (
+          incoming().diff(existing()).affectedKeys().hasOnly(['likes']) &&
+          incoming().likes == existing().get('likes', 0) + 1 &&
+          existsAfter(/databases/$(database)/documents/posts/$(postId)/likes/$(request.auth.uid))
+        ) ||
+        // Action: Edit
+        (
+          isAuthor(existing()) &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['content']) &&
+          isValidPost(incoming())
+        )
+      );
+
+      allow delete: if isAuthor(existing()); 
+
+      match /likes/{userId} {
+        allow read: if true;
+        allow create: if isSignedIn() && userId == request.auth.uid;
+        allow delete: if isSignedIn() && userId == request.auth.uid;
+      }
+
+      match /replies/{replyId} {
+        allow list: if true;
+        allow get: if isWithinWindow(existing());
+        allow create: if isSignedIn() && isWithinWindow(get(/databases/$(database)/documents/posts/$(postId)).data) &&
+                      isValidReply(incoming()) && 
+                      incoming().authorId == request.auth.uid &&
+                      incoming().createdAt == request.time &&
+                      incoming().likes == 0 &&
+                      isValidId(replyId);
+        
+        allow update: if isSignedIn() && isWithinWindow(existing()) && (
+           (
+             incoming().diff(existing()).affectedKeys().hasOnly(['likes']) &&
+             incoming().likes == existing().get('likes', 0) + 1 &&
+             existsAfter(/databases/$(database)/documents/posts/$(postId)/replies/$(replyId)/likes/$(request.auth.uid))
+           ) ||
+           // Action: Edit
+           (
+             isAuthor(existing()) &&
+             incoming().diff(existing()).affectedKeys().hasOnly(['content']) &&
+             isValidReply(incoming())
+           )
+        );
+
+        allow delete: if isAuthor(existing()); 
+
+        match /likes/{userId} {
+          allow read: if true;
+          allow create: if isSignedIn() && userId == request.auth.uid;
+        }
+      }
+    }
+
+
+  }
+}

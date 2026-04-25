@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "Post": {
+      "title": "Post",
+      "description": "An anonymous message posted by a user.",
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string",
+          "description": "The text content of the post (max 500 chars)."
+        },
+        "authorName": {
+          "type": "string",
+          "description": "The random anonymous username of the poster."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the post was created."
+        },
+        "likes": {
+          "type": "integer",
+          "description": "Number of likes/reactions on the post."
+        },
+        "authorId": {
+          "type": "string",
+          "description": "A unique semi-anonymous ID for the author (e.g. from localStorage) to handle mutations."
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Optional URL to an image uploaded with the post."
+        }
+      },
+      "required": ["content", "authorName", "createdAt", "likes", "authorId"]
+    },
+    "Reply": {
+      "title": "Reply",
+      "description": "An anonymous reply to a post.",
+      "type": "object",
+      "properties": {
+        "content": { "type": "string" },
+        "authorName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "authorId": { "type": "string" },
+        "likes": { "type": "integer", "description": "Number of likes on the reply." }
+      },
+      "required": ["content", "authorName", "createdAt", "authorId", "likes"]
+    }
+  },
+  "firestore": {
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Collection of all anonymous posts."
+    },
+    "/posts/{postId}/replies/{replyId}": {
+      "schema": "Reply",
+      "description": "Nested anonymous replies to a specific post."
+    }
+  }
+}
